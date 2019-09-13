@@ -289,7 +289,7 @@ int main(int argc, char *argv[])
 
                         //提取待打击的装甲板
                         Rect r=rect_tmp2.boundingRect();
-
+                        //防止矩形框超过图像范围而崩溃
                         if(r.x <0  || r.width<= 0 || r.x + r.width > midImage2.cols || r.y<0 ||  r.height <= 0 || r.y + r.height > midImage2.rows)
                             continue;
                         Mat testt1=midImage(r);
