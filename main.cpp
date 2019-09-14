@@ -1,6 +1,31 @@
+/*******************************************************************************
+MIT License
+
+Copyright (c) 2019 何江达
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*******************************************************************************/
+
 #include <iostream>
 #include <opencv2/opencv.hpp>
 #include <numeric>
+#include<chrono>
 using namespace cv;
 using namespace cv::ml;
 using namespace std;
@@ -44,13 +69,14 @@ Mat get(Mat input)
     return output;
 }
 
+
 /*
-* 参考: http://blog.csdn.net/liyuanbhu/article/details/50889951
-* 通过最小二乘法来拟合圆的信息
-* pts: 所有点坐标
-* center: 得到的圆心坐标
-* radius: 圆的半径
-*/
+ * 参考: http://blog.csdn.net/liyuanbhu/article/details/50889951
+ * 通过最小二乘法来拟合圆的信息
+ * pts: 所有点坐标
+ * center: 得到的圆心坐标
+ * radius: 圆的半径
+ */
 static bool CircleInfo2(std::vector<cv::Point2f>& pts, cv::Point2f& center, float& radius)
 {
     center = cv::Point2d(0, 0);
@@ -108,12 +134,43 @@ static bool CircleInfo2(std::vector<cv::Point2f>& pts, cv::Point2f& center, floa
     radius = std::sqrt(a * a + b * b - 4 * c) / 2;
     return true;
 }
+
+//模板匹配
+double TemplateMatch(cv::Mat image, cv::Mat tepl, cv::Point &point, int method)
+{
+    int result_cols =  image.cols - tepl.cols + 1;
+    int result_rows = image.rows - tepl.rows + 1;
+//    cout <<result_cols<<" "<<result_rows<<endl;
+    cv::Mat result = cv::Mat( result_cols, result_rows, CV_32FC1 );
+    cv::matchTemplate( image, tepl, result, method );
+
+    double minVal, maxVal;
+    cv::Point minLoc, maxLoc;
+    cv::minMaxLoc( result, &minVal, &maxVal, &minLoc, &maxLoc, Mat() );
+
+    switch(method)
+    {
+    case CV_TM_SQDIFF:
+    case CV_TM_SQDIFF_NORMED:
+        point = minLoc;
+        return minVal;
+
+    default:
+        point = maxLoc;
+        return maxVal;
+
+    }
+}
+
 //#define USE_CAMERA
 //#define SAVE_VIDEO
 //#define LEAF_IMG
 //#define DEBUG
 //#define DEBUG_LOG
+#define USE_TEMPLATE
+//#define USE_SVM
 #define SHOW_RESULT
+//#define SHOW_CIRCLE
 //#define SHOW_ALL_CONTOUR
 #define RED
 int main(int argc, char *argv[])
@@ -126,16 +183,16 @@ int main(int argc, char *argv[])
 #else
     VideoCapture cap;
     cap.open("../RM19windmillDemo/red.avi");
-
 #endif
 #ifdef LEAF_IMG
     //用于记录扇叶编号，方便保存图片
     int cnnt=0;
 #endif
+#ifdef USE_SVM
     //load svm model
     Ptr<SVM> svm=SVM::create();
     svm=SVM::load("../RM19windmillDemo/SVM4_9.xml");
-
+#endif
     // Save video
 #ifdef SAVE_VIDEO
     VideoWriter writer;
@@ -151,15 +208,24 @@ int main(int argc, char *argv[])
     cap >> srcImage;
     // 画拟合圆
     Mat drawcircle=Mat(srcImage.rows,srcImage.cols, CV_8UC3, Scalar(0, 0, 0));
-
+#ifdef USE_TEMPLATE
+    Mat templ[9];
+    for(int i=1;i<=8;i++)
+    {
+        templ[i]=imread("../RM19windmillDemo/template/template"+to_string(i)+".jpg",IMREAD_GRAYSCALE);
+    }
+#endif
     vector<Point2f> cirV;
 
     Point2f cc=Point2f(0,0);
+
+
     //程序主循环
+
     while(true)
     {
         cap >> srcImage;
-
+        auto t1 = chrono::high_resolution_clock::now();
 #ifdef SAVE_VIDEO
         if(!writer.isOpened())
         {
@@ -185,30 +251,27 @@ int main(int argc, char *argv[])
         Mat midImage=imgChannels.at(0)-imgChannels.at(2);
 #endif
         Mat midImage2=midImage.clone();
-        //二值化，背景为白色，图案为黑色
-        threshold(midImage,midImage,100,255,CV_THRESH_BINARY_INV);
-        //漫水填充 为之后的查找要打击的装甲板做准备
-        floodFill(midImage,Point(0,0),Scalar(0));
-#ifdef DEBUG
-        imshow("floodFill",midImage);
-#endif
         //二值化，背景为黑色，图案为白色
         //用于查找扇叶
         threshold(midImage2,midImage2,100,255,CV_THRESH_BINARY);
 #ifdef DEBUG
         imshow("midImage2",midImage2);
-#endif
-        //膨胀
-        const int structElementSize=2;
+#endif  
+        int structElementSize=2;
         Mat element=getStructuringElement(MORPH_RECT,Size(2*structElementSize+1,2*structElementSize+1),Point(structElementSize,structElementSize));
+        //膨胀
         dilate(midImage2,midImage2,element);
+        //开运算，消除扇叶上可能存在的小洞
+        structElementSize=3;
+        element=getStructuringElement(MORPH_RECT,Size(2*structElementSize+1,2*structElementSize+1),Point(structElementSize,structElementSize));
+        morphologyEx(midImage2,midImage2, MORPH_CLOSE, element);
 #ifdef DEBUG
         imshow("dilate",midImage2);
 #endif
         //查找轮廓
         vector<vector<Point>> contours2;
         vector<Vec4i> hierarchy2;
-        findContours(midImage2,contours2,hierarchy2,RETR_CCOMP,CHAIN_APPROX_SIMPLE);
+        findContours(midImage2,contours2,hierarchy2,CV_RETR_TREE,CHAIN_APPROX_SIMPLE);
 
         RotatedRect rect_tmp2;
         bool findTarget=0;
@@ -217,7 +280,6 @@ int main(int argc, char *argv[])
         if(hierarchy2.size())
             for(int i=0;i>=0;i=hierarchy2[i][0])
             {
-
                 rect_tmp2=minAreaRect(contours2[i]);
                 Point2f P[4];
                 rect_tmp2.points(P);
@@ -244,10 +306,17 @@ int main(int argc, char *argv[])
                     srcRect[1]=P[2];
                     srcRect[2]=P[3];
                 }
-
+#ifdef SHOW_ALL_CONTOUR
+                Scalar color(rand() & 255, rand() & 255, rand() & 255);
+                drawContours(srcImage, contours2, i, color, 4, 8, hierarchy2);
+#endif
                 //通过面积筛选
                 double area=height*width;
                 if(area>5000){
+#ifdef DEBUG_LOG
+                    cout <<hierarchy2[i]<<endl;
+
+#endif
                     dstRect[0]=Point2f(0,0);
                     dstRect[1]=Point2f(width,0);
                     dstRect[2]=Point2f(width,height);
@@ -258,7 +327,6 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
                     imshow("warpdst",warp_dst_map);
 #endif
-
                     // 提取扇叶图片
                     Mat testim;
                     testim = warp_dst_map(Rect(0,0,width,height));
@@ -277,115 +345,157 @@ int main(int argc, char *argv[])
                         cout<<"filed open"<<endl;
                         return -1;
                     }
+#ifdef USE_TEMPLATE
+                    cv::Point matchLoc;
+                    double value;
+                    Mat tmp1;
+                    resize(testim,tmp1,Size(42,20));
+#endif
+#if (defined DEBUG)&&(defined USE_TEMPLATE)
+                    imshow("temp1",tmp1);
+#endif
+#ifdef USE_TEMPLATE
+                    vector<double> Vvalue1;
+                    vector<double> Vvalue2;
+                    for(int j=1;j<=6;j++)
+                    {
+                        value = TemplateMatch(tmp1, templ[j], matchLoc, CV_TM_CCOEFF_NORMED);
+                        Vvalue1.push_back(value);
+                    }
+                    for(int j=7;j<=8;j++)
+                    {
+                        value = TemplateMatch(tmp1, templ[j], matchLoc, CV_TM_CCOEFF_NORMED);
+                        Vvalue2.push_back(value);
+                    }
+                    int maxv1=0,maxv2=0;
 
+                    for(int t1=0;t1<6;t1++)
+                    {
+                        if(Vvalue1[t1]>Vvalue1[maxv1])
+                        {
+                            maxv1=t1;
+                        }
+                    }
+                    for(int t2=0;t2<2;t2++)
+                    {
+                        if(Vvalue2[t2]>Vvalue2[maxv2])
+                        {
+                            maxv2=t2;
+                        }
+                    }
+#endif
+#if (defined DEBUG_LOG)&&(defined USE_TEMPLATE)
+                    cout<<Vvalue1[maxv1]<<endl;
+                    cout<<Vvalue2[maxv2]<<endl;
+#endif
+#ifdef USE_SVM
                     //转化为svm所要求的格式
                     Mat test=get(testim);
-
+#endif
                     //预测是否是要打击的扇叶
-                    if(svm->predict(test)>0.9)
+#ifdef USE_TEMPLATE
+                    if(Vvalue1[maxv1]>Vvalue2[maxv2]&&Vvalue1[maxv1]>0.6)
+#endif
+#ifdef USE_SVM
+                    if(svm->predict(test)>=0.9)
+#endif
                     {
-
                         findTarget=true;
+                        //查找装甲板
+                        if(hierarchy2[i][2]>0)
+                        {
+                            RotatedRect rect_tmp=minAreaRect(contours2[hierarchy2[i][2]]);
+                            Point2f Pnt[4];
+                            rect_tmp.points(Pnt);
+                            const float maxHWRatio=0.7153846;
+                            const float maxArea=2000;
+                            const float minArea=500;
 
-                        //提取待打击的装甲板
-                        Rect r=rect_tmp2.boundingRect();
-                        //防止矩形框超过图像范围而崩溃
-                        if(r.x <0  || r.width<= 0 || r.x + r.width > midImage2.cols || r.y<0 ||  r.height <= 0 || r.y + r.height > midImage2.rows)
-                            continue;
-                        Mat testt1=midImage(r);
-                        Point2f Leafloc;
-                        Leafloc.x=rect_tmp2.boundingRect().x;
-                        Leafloc.y=rect_tmp2.boundingRect().y;
+                            float width=rect_tmp.size.width;
+                            float height=rect_tmp.size.height;
+                            if(height>width)
+                                swap(height,width);
+                            float area=width*height;
+
+                            if(height/width>maxHWRatio||area>maxArea ||area<minArea){
 #ifdef DEBUG
-                        imshow("ArmorLeaf",testt1);
+                                 cout<<"hw "<<height/width<<"area "<<area<<endl;
+                                 for(int j=0;j<4;++j)
+                                 {
+                                     line(srcImage,Pnt[j],Pnt[(j+1)%4],Scalar(255,0,255),4);
+                                 }
+                                 for(int j=0;j<4;++j)
+                                 {
+                                     line(srcImage,P[j],P[(j+1)%4],Scalar(255,255,0),4);
+                                 }
+                                 imshow("debug",srcImage);
+                                 waitKey(0);
 #endif
-                        //第二次轮廓查找，寻找打击的装甲板位置
-                        vector<vector<Point>> contours;
-                        vector<Vec4i> hierarchy;
-                        findContours(testt1,contours,hierarchy,RETR_CCOMP,CHAIN_APPROX_SIMPLE);
-                        //宽高比
-                        const float maxHWRatio=0.7153846;
-                        const float maxArea=2000;
-                        const float minArea=1000;
-
-                        if(hierarchy.size())
-                            for(int i=0;i>=0;i=hierarchy[i][0])
-                            {
-                                RotatedRect rect_tmp=minAreaRect(contours[i]);
-                                Point2f Pnt[4];
-                                rect_tmp.points(Pnt);
-
-                                float width=rect_tmp.size.width;
-                                float height=rect_tmp.size.height;
-                                if(height>width)
-                                    swap(height,width);
-                                float area=width*height;
-#ifdef DEBUG_LOG
-                                cout<<"width " << width << " height "<<height<<" Hwratio "<<height/width<<" area "<<area<<endl;
-#endif
-                                if(height/width<maxHWRatio&&area<maxArea &&area>minArea)
-                                {
-
-                                    Point centerP=rect_tmp.center;
-                                    //打击点
-                                    centerP.x+=rect_tmp2.boundingRect().x;
-                                    centerP.y+=rect_tmp2.boundingRect().y;
-
-                                    circle(drawcircle,centerP,1,Scalar(0,0,255),1);
-
-                                    //用于拟合圆，用30个点拟合圆
-                                    if(cirV.size()<30)
-                                    {
-                                        cirV.push_back(centerP);
-                                    }
-                                    else
-                                    {
-                                        float R;
-                                        //得到拟合的圆心
-                                        CircleInfo2(cirV,cc,R);
-                                        circle(drawcircle,cc,1,Scalar(255,0,0),2);
-#ifdef DEBUG_LOG
-                                        cout<<endl<<"center "<<cc.x<<" , "<<cc.y<<endl;
-#endif
-                                        cirV.erase(cirV.begin());
-
-                                    }
-                                    if(cc.x!=0&&cc.y!=0){
-                                        Mat rot_mat=getRotationMatrix2D(cc,0,1);
-#ifdef DEBUG_LOG
-                                        cout<<endl<<"center1 "<<cc.x<<" , "<<cc.y<<endl;
-#endif
-                                        float sinA=rot_mat.at<double>(0,1);//sin(60);
-                                        float cosA=rot_mat.at<double>(0,0);//cos(60);
-                                        float xx=-(cc.x-centerP.x);
-                                        float yy=-(cc.y-centerP.y);
-                                        Point2f resPoint=Point2f(cc.x+cosA*xx-sinA*yy,cc.y+sinA*xx+cosA*yy);
-                                        circle(srcImage,resPoint,1,Scalar(0,255,0),10);
-                                    }
-
-                                    for(int j=0;j<4;++j)
-                                    {
-                                        line(srcImage,Pnt[j]+Leafloc,Pnt[(j+1)%4]+Leafloc,Scalar(0,255,255),2);
-                                    }
-                                }
+                                 continue;
                             }
+                            Point centerP=rect_tmp.center;
+                            //打击点
+                            circle(drawcircle,centerP,1,Scalar(0,0,255),1);
+#ifdef SHOW_CIRCLE
+                            //用于拟合圆，用30个点拟合圆
+                            if(cirV.size()<30)
+                            {
+                                cirV.push_back(centerP);
+                            }
+                            else
+                            {
+                                float R;
+                                //得到拟合的圆心
+                                CircleInfo2(cirV,cc,R);
+                                circle(drawcircle,cc,1,Scalar(255,0,0),2);
+#endif
+#if (defined DEBUG_LOG)&& (defined SHOW_CIRCLE)
+                                cout<<endl<<"center "<<cc.x<<" , "<<cc.y<<endl;
+#endif
+#ifdef SHOW_CIRCLE
+                                cirV.erase(cirV.begin());
+
+                            }
+                            if(cc.x!=0&&cc.y!=0){
+                                Mat rot_mat=getRotationMatrix2D(cc,0,1);
+#endif
+#if (defined DEBUG_LOG)&&(defined SHOW_CIRCLE)
+                                cout<<endl<<"center1 "<<cc.x<<" , "<<cc.y<<endl;
+#endif
+#ifdef SHOW_CIRCLE
+                                float sinA=rot_mat.at<double>(0,1);//sin(60);
+                                float cosA=rot_mat.at<double>(0,0);//cos(60);
+                                float xx=-(cc.x-centerP.x);
+                                float yy=-(cc.y-centerP.y);
+                                Point2f resPoint=Point2f(cc.x+cosA*xx-sinA*yy,cc.y+sinA*xx+cosA*yy);
+                                circle(srcImage,resPoint,1,Scalar(0,255,0),10);
+                            }
+#endif
+                            for(int j=0;j<4;++j)
+                            {
+                                line(srcImage,Pnt[j],Pnt[(j+1)%4],Scalar(0,255,255),2);
+                            }
+                        }
                     }
                 }
 #ifdef DEBUG_LOG
                 cout<<"width2 " << width << " height2 "<<height<<" Hwratio2 "<<height/width<<" area2 "<<area<<endl;
 #endif
-#ifdef SHOW_ALL_CONTOUR
-                for(int j=0;j<4;++j)
-                {
-                    line(srcImage,P[j],P[(j+1)%4],Scalar(0,255,0),2);
-                }
-#endif
+
             }
-#ifdef SHOW_RESULT
-        imshow("Result",srcImage);
+
+#if (defined SHOW_CIRCLE)&&(defined SHOW_RESULT)
         imshow("circle",drawcircle);
 #endif
+#ifdef SHOW_RESULT
+        imshow("Result",srcImage);
         if('q'==waitKey(1))break;
+#endif
+        //函数所花的时间
+        auto t2 = chrono::high_resolution_clock::now();
+        cout << "Total period: " << (static_cast<chrono::duration<double, std::milli>>(t2 - t1)).count() << " ms" << endl;
+//        t1 = chrono::high_resolution_clock::now();
+
     }
     return 0;
 }
