@@ -13,4 +13,12 @@ DISTFILES += \
     LICENSE \
     README.md \
     SVM4_9.xml \
-    red.avi
+    red.avi \
+    template/template1.jpg \
+    template/template2.jpg \
+    template/template3.jpg \
+    template/template4.jpg \
+    template/template5.jpg \
+    template/template6.jpg \
+    template/template7.jpg \
+    template/template8.jpg
