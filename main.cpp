@@ -400,7 +400,7 @@ int main(int argc, char *argv[])
                     {
                         findTarget=true;
                         //查找装甲板
-                        if(hierarchy2[i][2]>0)
+                        if(hierarchy2[i][2]>=0)
                         {
                             RotatedRect rect_tmp=minAreaRect(contours2[hierarchy2[i][2]]);
                             Point2f Pnt[4];
