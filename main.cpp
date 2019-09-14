@@ -219,7 +219,6 @@ int main(int argc, char *argv[])
 
     Point2f cc=Point2f(0,0);
 
-
     //程序主循环
 
     while(true)
@@ -245,12 +244,11 @@ int main(int argc, char *argv[])
         split(srcImage,imgChannels);
         //获得目标颜色图像的二值图
 #ifdef RED
-        Mat midImage=imgChannels.at(2)-imgChannels.at(0);
+        Mat midImage2=imgChannels.at(2)-imgChannels.at(0);
 #endif
 #ifndef RED
-        Mat midImage=imgChannels.at(0)-imgChannels.at(2);
+        Mat midImage2=imgChannels.at(0)-imgChannels.at(2);
 #endif
-        Mat midImage2=midImage.clone();
         //二值化，背景为黑色，图案为白色
         //用于查找扇叶
         threshold(midImage2,midImage2,100,255,CV_THRESH_BINARY);
