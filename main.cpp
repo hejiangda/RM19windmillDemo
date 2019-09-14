@@ -170,7 +170,7 @@ double TemplateMatch(cv::Mat image, cv::Mat tepl, cv::Point &point, int method)
 #define USE_TEMPLATE
 //#define USE_SVM
 #define SHOW_RESULT
-//#define SHOW_CIRCLE
+#define SHOW_CIRCLE
 //#define SHOW_ALL_CONTOUR
 #define RED
 int main(int argc, char *argv[])
@@ -433,8 +433,9 @@ int main(int argc, char *argv[])
                             }
                             Point centerP=rect_tmp.center;
                             //打击点
-                            circle(drawcircle,centerP,1,Scalar(0,0,255),1);
+                            circle(srcImage,centerP,1,Scalar(0,255,0),2);
 #ifdef SHOW_CIRCLE
+                            circle(drawcircle,centerP,1,Scalar(0,0,255),1);
                             //用于拟合圆，用30个点拟合圆
                             if(cirV.size()<30)
                             {
@@ -455,7 +456,7 @@ int main(int argc, char *argv[])
 
                             }
                             if(cc.x!=0&&cc.y!=0){
-                                Mat rot_mat=getRotationMatrix2D(cc,0,1);
+                                Mat rot_mat=getRotationMatrix2D(cc,30,1);
 #endif
 #if (defined DEBUG_LOG)&&(defined SHOW_CIRCLE)
                                 cout<<endl<<"center1 "<<cc.x<<" , "<<cc.y<<endl;
