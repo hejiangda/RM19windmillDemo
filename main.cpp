@@ -176,7 +176,7 @@ double TemplateMatch(cv::Mat image, cv::Mat tepl, cv::Point &point, int method)
 int main(int argc, char *argv[])
 {
 #ifdef USE_CAMERA
-    VideoCapture cap(1);
+    VideoCapture cap(0);
     cap.set(CV_CAP_PROP_FRAME_WIDTH, 1280);
     cap.set(CV_CAP_PROP_FRAME_HEIGHT, 720);
     cap.set(CV_CAP_PROP_FOURCC,CV_FOURCC('M','J','P','G'));
@@ -318,7 +318,7 @@ int main(int argc, char *argv[])
                     dstRect[0]=Point2f(0,0);
                     dstRect[1]=Point2f(width,0);
                     dstRect[2]=Point2f(width,height);
-                    //透视变换，矫正成规则矩形
+                    // 应该用透视变换的，这里用了仿射变换，我把他们搞混了……，矫正成规则矩形
                     Mat warp_mat=getAffineTransform(srcRect,dstRect);
                     Mat warp_dst_map;
                     warpAffine(midImage2,warp_dst_map,warp_mat,warp_dst_map.size());
