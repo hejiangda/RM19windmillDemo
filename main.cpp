@@ -321,7 +321,7 @@ int main(int argc, char *argv[])
                     dstRect[1]=Point2f(width,0);
                     dstRect[2]=Point2f(width,height);
                     dstRect[3]=Point2f(0,height);
-                    // 应该用透视变换的，矫正成规则矩形
+                    // 应用透视变换，矫正成规则矩形
                     Mat transform = getPerspectiveTransform(srcRect,dstRect);
                     Mat perspectMat;
                     warpPerspective(midImage2,perspectMat,transform,midImage2.size());
