@@ -282,8 +282,8 @@ int main(int argc, char *argv[])
                 Point2f P[4];
                 rect_tmp2.points(P);
 
-                Point2f srcRect[3];
-                Point2f dstRect[3];
+                Point2f srcRect[4];
+                Point2f dstRect[4];
 
                 double width;
                 double height;
@@ -296,6 +296,7 @@ int main(int argc, char *argv[])
                     srcRect[0]=P[0];
                     srcRect[1]=P[1];
                     srcRect[2]=P[2];
+                    srcRect[3]=P[3];
                 }
                 else
                 {
@@ -303,6 +304,7 @@ int main(int argc, char *argv[])
                     srcRect[0]=P[1];
                     srcRect[1]=P[2];
                     srcRect[2]=P[3];
+                    srcRect[3]=P[0];
                 }
 #ifdef SHOW_ALL_CONTOUR
                 Scalar color(rand() & 255, rand() & 255, rand() & 255);
@@ -318,16 +320,17 @@ int main(int argc, char *argv[])
                     dstRect[0]=Point2f(0,0);
                     dstRect[1]=Point2f(width,0);
                     dstRect[2]=Point2f(width,height);
-                    // 应该用透视变换的，这里用了仿射变换，我把他们搞混了……，矫正成规则矩形
-                    Mat warp_mat=getAffineTransform(srcRect,dstRect);
-                    Mat warp_dst_map;
-                    warpAffine(midImage2,warp_dst_map,warp_mat,warp_dst_map.size());
+                    dstRect[3]=Point2f(0,height);
+                    // 应该用透视变换的，矫正成规则矩形
+                    Mat transform = getPerspectiveTransform(srcRect,dstRect);
+                    Mat perspectMat;
+                    warpPerspective(midImage2,perspectMat,transform,midImage2.size());
 #ifdef DEBUG
-                    imshow("warpdst",warp_dst_map);
+                    imshow("warpdst",perspectMat);
 #endif
                     // 提取扇叶图片
                     Mat testim;
-                    testim = warp_dst_map(Rect(0,0,width,height));
+                    testim = perspectMat(Rect(0,0,width,height));
 #ifdef LEAF_IMG
                     //用于保存扇叶图片，以便接下来训练svm
                     string s="leaf"+to_string(cnnt)+".jpg";
